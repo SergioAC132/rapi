@@ -6,11 +6,20 @@ API en Spring Boot 4 / Java 21 para la plataforma de pedidos a domicilio que con
 
 Requisitos: JDK 21 o superior y MySQL 8 en `localhost:3306`.
 
-```bash
-DB_PASSWORD=tu_password ./mvnw spring-boot:run
+Credenciales de MySQL: crea `src/main/resources/application-local.properties` (git lo ignora) con
+
+```properties
+spring.datasource.username=root
+spring.datasource.password=tu_password
 ```
 
-La base `rapientrega` se crea sola: la URL de conexión lleva `createDatabaseIfNotExist=true` y Hibernate genera las tablas (`ddl-auto=update`). El usuario se puede cambiar con `DB_USERNAME`. La API queda en `http://localhost:1500`.
+o pásalas como variables de entorno:
+
+```bash
+DB_USERNAME=root DB_PASSWORD=tu_password ./mvnw spring-boot:run
+```
+
+La base `rapientrega` se crea sola: la URL de conexión lleva `createDatabaseIfNotExist=true` y Hibernate genera las tablas (`ddl-auto=update`). La API queda en `http://localhost:8080`.
 
 Pruebas (usan H2 en memoria, no necesitan MySQL):
 
@@ -25,7 +34,7 @@ Pruebas (usan H2 en memoria, no necesitan MySQL):
 | Catálogo | `RestauranteService`, `ProductoService` | Restaurantes, menú y disponibilidad |
 | Clientes | `ClienteService`, `CalificacionService` | Datos del cliente y calificación final |
 | Pedidos | `PedidoService`, `DetallePedidoService` | Ciclo de vida del pedido y regla de los 5 minutos |
-| Pagos y facturación | `PagoService`, `FacturaService` | Cobro y reembolso con la pasarela externa, factura en el sistema heredado |
+| Finanzas | `PagoService`, `FacturaService` | Cobro y reembolso con la pasarela externa, factura en el sistema heredado |
 | Logística | `EntregaService`, `RepartidorService`, `SeguimientoService` | Asignación por cercanía, estados de entrega y seguimiento en tiempo real |
 
 Cada dominio modifica solo sus propias entidades. Cuando un dominio necesita que otro reaccione, publica un evento en lugar de escribir en las tablas ajenas.
@@ -46,25 +55,35 @@ Cada dominio modifica solo sus propias entidades. Cuando un dominio necesita que
 
 ## Patrones aplicados
 
-| Patrón (Erl, *SOA Design Patterns*) | Dónde | Problema del caso que resuelve |
+Nombres del catálogo de Erl (*SOA Design Patterns*) visto en la Unidad 2.
+
+| Patrón | Dónde | Problema del caso que resuelve |
 |---|---|---|
-| Legacy Wrapper | `integration/facturacion/SistemaFacturacionLegadoAdapter` | El sistema de facturación de 2012 no se puede reemplazar; el adaptador traduce al formato de texto delimitado del sistema y aísla al resto de la plataforma de él |
-| Service Façade / adaptador de servicio externo | `integration/pagos/PasarelaPagos` + `PasarelaPagosSimulada` | La pasarela es externa con API propia; `PagoService` depende de la interfaz y la implementación real se cambia sin tocar el dominio |
-| Event-Driven Messaging (publicación-suscripción) | `events/*`, `*Listener`, `SeguimientoService` | Pedidos no debe conocer a Logística ni a Pagos; el seguimiento en tiempo real se envía a los suscriptores por SSE |
-| Compensating Service Transaction | `ReembolsoListener` → `PagoService.reembolsarPago` | Si el restaurante no acepta en 5 minutos o rechaza, el cobro ya hecho se compensa con un reembolso |
-| Asynchronous Queuing | `@Async` + `@TransactionalEventListener` | La facturación heredada y la asignación no bloquean la respuesta al cliente y solo se ejecutan si la transacción que las origina se confirmó |
+| Abstracción de entidad | `RestauranteService`, `ProductoService`, `ClienteService`, `RepartidorService`… | Restaurantes, menú y repartidores se usan en búsqueda, pedido y asignación; su lógica no se repite en cada proceso |
+| Abstracción de proceso | `PedidoService`, `PagoService`, `EntregaService`, `FacturaService` | La regla de los 5 minutos y el orden pago → aceptación → entrega viven en servicios de tarea, separados de las entidades |
+| Abstracción de utilidad | `SeguimientoService`, adaptadores de `integration/` | Notificar en tiempo real y hablar con sistemas externos son funciones técnicas, no del negocio |
+| Envoltorio de sistema heredado (Legacy Wrapper) | `integration/facturacion/SistemaFacturacionLegadoAdapter` | El sistema de facturación de 2012 no se puede reemplazar; el envoltorio traduce su formato de texto delimitado a un contrato estandarizado |
+| Fachada de servicio (Service Façade) | `integration/pagos/PasarelaPagos` + `PasarelaPagosSimulada` | La pasarela es externa con API propia; cambiar de proveedor no altera el contrato de Pago |
+| Esquema canónico (Canonical Schema) | `exceptions/ManejadorErrores` | Los equipos que consumen los servicios en paralelo reciben todos los errores con el mismo esquema (`ProblemDetail`) |
+
+*Contrato desacoplado* no está aplicado: las respuestas devuelven las entidades de base de datos. Queda como trabajo futuro.
+
+## Documentación del Reto 2
+
+- [docs/documento-diseno.html](docs/documento-diseno.html): documento de diseño alineado a la presentación de la Unidad 2 (modelado en cinco pasos, matriz de mapeo, dominios con diagrama, seis patrones del catálogo, comunicación y especificación de cuatro capacidades). Se abre en el navegador y se exporta con Ctrl+P → Guardar como PDF (tamaño carta, sin encabezados).
+- [docs/guion-debate.md](docs/guion-debate.md): guion de la defensa de 5 minutos y respuestas a preguntas probables.
 
 ## Comunicación
 
-| Interacción | Estilo | Patrón de mensajes |
+| Interacción | Estilo | Patrón de intercambio |
 |---|---|---|
-| Cliente → Pedidos / Detalle / Pago | Síncrona (REST) | Solicitud-respuesta |
-| Pagos → Pasarela externa (cobro) | Síncrona | Solicitud-respuesta |
+| Cliente → Pedidos / Detalle / Pago | Síncrona (REST) | Petición-respuesta |
+| Pagos → Pasarela externa (cobro) | Síncrona | Petición-respuesta |
 | Pedidos → Logística (pedido aceptado) | Asíncrona | Publicación-suscripción |
-| Pedidos → Pagos (pedido cancelado → reembolso) | Asíncrona | Publicación-suscripción |
-| Facturación → Sistema heredado | Asíncrona | Disparar y olvidar, con consulta de estado |
+| Pedidos → Finanzas (pedido cancelado → reembolso) | Asíncrona | Publicación-suscripción |
+| Cliente → Facturación (`solicitarFactura`) | Asíncrona | Petición-respuesta con acuse `202` y consulta de estado |
 | Logística → Cliente (seguimiento) | Asíncrona (SSE) | Publicación-suscripción |
-| Temporizador → Pedidos (vencimiento) | Asíncrona programada | Evento de tiempo |
+| Temporizador → Pedidos (vencimiento) | Asíncrona | Unidireccional |
 
 ## Errores
 

@@ -54,7 +54,7 @@ public class EntregaController {
     @GetMapping(value = "/pedido/{pedidoId}/seguimiento",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter seguirEntrega(@PathVariable Long pedidoId) {
-        return seguimientoService.suscribir(pedidoId);
+        return seguimientoService.suscribirSeguimiento(pedidoId);
     }
 
     @GetMapping("/repartidor/{repartidorId}")

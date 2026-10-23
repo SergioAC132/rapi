@@ -31,7 +31,7 @@ public class SeguimientoService {
         this.entregaService = entregaService;
     }
 
-    public SseEmitter suscribir(Long pedidoId) {
+    public SseEmitter suscribirSeguimiento(Long pedidoId) {
 
         SseEmitter emisor = new SseEmitter(TIEMPO_CONEXION_MS);
 
