@@ -6,22 +6,76 @@ API en Spring Boot 4 / Java 21 para la plataforma de pedidos a domicilio que con
 
 Requisitos: JDK 21 o superior y MySQL 8 en `localhost:3306`.
 
-Credenciales de MySQL: crea `src/main/resources/application-local.properties` (git lo ignora) con
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/SergioAC132/rapi
+cd rapi
 
-```properties
-spring.datasource.username=root
-spring.datasource.password=tu_password
+# 2. Configurar las credenciales de MySQL (ver la sección siguiente)
+
+# 3. Ejecutar
+./mvnw spring-boot:run          # Linux / macOS
+mvnw.cmd spring-boot:run        # Windows
 ```
 
-o pásalas como variables de entorno:
+La API queda en `http://localhost:8080`.
+
+La base `rapientrega` se crea sola: la URL de conexión lleva `createDatabaseIfNotExist=true` y Hibernate genera las tablas (`ddl-auto=update`).
+
+### Configurar la conexión a la base de datos
+
+El proyecto necesita un usuario de MySQL con permiso para crear la base `rapientrega`. Hay dos formas de indicar las credenciales; elige una.
+
+#### Opción A: variables de entorno (recomendada)
+
+No hay que tocar ningún archivo, así las credenciales nunca terminan en el repositorio.
+
+| Variable | Descripción | Valor por defecto |
+|---|---|---|
+| `DB_URL` | URL JDBC de MySQL | `jdbc:mysql://localhost:3306/rapientrega?createDatabaseIfNotExist=true` |
+| `DB_USERNAME` | Usuario de MySQL | *(sin valor: obligatoria)* |
+| `DB_PASSWORD` | Contraseña de MySQL | *(sin valor: obligatoria si tu usuario tiene contraseña)* |
 
 ```bash
-DB_USERNAME=root DB_PASSWORD=tu_password ./mvnw spring-boot:run
+# Linux / macOS
+export DB_USERNAME=mi_usuario
+export DB_PASSWORD=mi_password
+./mvnw spring-boot:run
 ```
 
-La base `rapientrega` se crea sola: la URL de conexión lleva `createDatabaseIfNotExist=true` y Hibernate genera las tablas (`ddl-auto=update`). La API queda en `http://localhost:8080`.
+```powershell
+# Windows (PowerShell)
+$env:DB_USERNAME="mi_usuario"
+$env:DB_PASSWORD="mi_password"
+.\mvnw.cmd spring-boot:run
+```
 
-Pruebas (usan H2 en memoria, no necesitan MySQL):
+Si tu MySQL no está en `localhost:3306`, define también `DB_URL`.
+
+#### Opción B: editar `application.properties`
+
+Abre `src/main/resources/application.properties` y haz esto:
+
+1. **Comenta** las tres líneas que leen variables de entorno (agrégales `#` al inicio).
+2. **Descomenta** las tres líneas de abajo y escribe tus datos.
+
+```properties
+# spring.datasource.url=${DB_URL:jdbc:mysql://localhost:3306/rapientrega?createDatabaseIfNotExist=true}
+# spring.datasource.username=${DB_USERNAME:}
+# spring.datasource.password=${DB_PASSWORD:}
+
+spring.datasource.url=jdbc:mysql://localhost:3306/rapientrega?createDatabaseIfNotExist=true
+spring.datasource.username=mi_usuario
+spring.datasource.password=mi_password
+```
+
+Después ejecuta normalmente con `./mvnw spring-boot:run`.
+
+> **Importante:** si usas esta opción, no subas el archivo con tus credenciales reales a GitHub. Deja las líneas vacías en el repositorio y rellénalas solo en tu copia local.
+
+### Pruebas
+
+Las pruebas usan H2 en memoria, no necesitan MySQL:
 
 ```bash
 ./mvnw test
@@ -67,11 +121,6 @@ Nombres del catálogo de Erl (*SOA Design Patterns*) visto en la Unidad 2.
 | Esquema canónico (Canonical Schema) | `exceptions/ManejadorErrores` | Los equipos que consumen los servicios en paralelo reciben todos los errores con el mismo esquema (`ProblemDetail`) |
 
 *Contrato desacoplado* no está aplicado: las respuestas devuelven las entidades de base de datos. Queda como trabajo futuro.
-
-## Documentación del Reto 2
-
-- [docs/documento-diseno.html](docs/documento-diseno.html): documento de diseño alineado a la presentación de la Unidad 2 (modelado en cinco pasos, matriz de mapeo, dominios con diagrama, seis patrones del catálogo, comunicación y especificación de cuatro capacidades). Se abre en el navegador y se exporta con Ctrl+P → Guardar como PDF (tamaño carta, sin encabezados).
-- [docs/guion-debate.md](docs/guion-debate.md): guion de la defensa de 5 minutos y respuestas a preguntas probables.
 
 ## Comunicación
 
