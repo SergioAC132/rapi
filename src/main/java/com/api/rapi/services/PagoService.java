@@ -17,16 +17,9 @@ public interface PagoService {
 
     List<PagoModel> buscarPagosPorEstado(String estado);
 
-    PagoModel registrarPago(Long pedidoId, String metodoPago);
+    PagoModel procesarPago(Long pedidoId, String tokenTarjeta);
 
-    PagoModel confirmarPago(Long pagoId, String referenciaExterna);
-
-    PagoModel marcarPagoFallido(Long pagoId);
-
-    PagoModel solicitarReembolso(Long pedidoId);
-
-    PagoModel confirmarReembolso(
-            Long pagoId, String referenciaReembolso);
+    PagoModel reembolsarPago(Long pedidoId);
 
     boolean verificarPagoConfirmado(Long pedidoId);
 

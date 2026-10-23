@@ -7,16 +7,23 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
 import com.api.rapi.models.RepartidorModel;
+import com.api.rapi.repositories.EntregaRepository;
 import com.api.rapi.repositories.RepartidorRepository;
 
 @Service
 public class RepartidorServiceImpl implements RepartidorService {
 
     private final RepartidorRepository repartidorRepository;
+    private final EntregaRepository entregaRepository;
 
-    public RepartidorServiceImpl(RepartidorRepository repartidorRepository) {
+    public RepartidorServiceImpl(
+            RepartidorRepository repartidorRepository,
+            EntregaRepository entregaRepository) {
+
         this.repartidorRepository = repartidorRepository;
+        this.entregaRepository = entregaRepository;
     }
 
     @Override
@@ -89,9 +96,6 @@ public class RepartidorServiceImpl implements RepartidorService {
         repartidor.setCorreo(datos.getCorreo());
         repartidor.setTelefono(datos.getTelefono());
         repartidor.setTipoVehiculo(datos.getTipoVehiculo());
-
-        // El estado y la disponibilidad se actualizan
-        // mediante sus operaciones específicas.
 
         return repartidorRepository.save(repartidor);
     }
@@ -172,16 +176,18 @@ public class RepartidorServiceImpl implements RepartidorService {
 
         RepartidorModel repartidor = obtenerRepartidor(id);
 
-        // No eliminar repartidores que participan en una entrega.
-        // Se revisan las referencias desde EntregaRepository
-        // cuando implementemos el servicio de entregas.
+        if (!entregaRepository.findByRepartidorId(id).isEmpty()) {
+            throw new IllegalStateException(
+                    "No se puede eliminar un repartidor con entregas registradas");
+        }
+
         repartidorRepository.delete(repartidor);
     }
 
     private RepartidorModel obtenerRepartidor(Long id) {
         return repartidorRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El repartidor no existe"));
     }
 

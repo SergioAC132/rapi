@@ -7,6 +7,8 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
+
 import com.api.rapi.models.DetallePedidoModel;
 import com.api.rapi.models.PedidoModel;
 import com.api.rapi.models.ProductoModel;
@@ -65,7 +67,7 @@ public class DetallePedidoServiceImpl implements DetallePedidoService {
 
         ProductoModel producto = productoRepository.findById(productoId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El producto no existe"));
 
         if (!producto.getRestaurante().getId()
@@ -119,7 +121,7 @@ public class DetallePedidoServiceImpl implements DetallePedidoService {
 
         DetallePedidoModel detalle = detallePedidoRepository.findById(detalleId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El detalle del pedido no existe"));
 
         PedidoModel pedido = obtenerPedidoEditable(
@@ -145,7 +147,7 @@ public class DetallePedidoServiceImpl implements DetallePedidoService {
 
         DetallePedidoModel detalle = detallePedidoRepository.findById(detalleId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El detalle del pedido no existe"));
 
         PedidoModel pedido = obtenerPedidoEditable(
@@ -162,8 +164,8 @@ public class DetallePedidoServiceImpl implements DetallePedidoService {
     public BigDecimal calcularTotalPedido(Long pedidoId) {
 
         if (!pedidoRepository.existsById(pedidoId)) {
-            throw new IllegalArgumentException(
-                    "El pedido no existe");
+            throw new RecursoNoEncontradoException(
+                                "El pedido no existe");
         }
 
         return calcularTotalDetalles(pedidoId);
@@ -173,7 +175,7 @@ public class DetallePedidoServiceImpl implements DetallePedidoService {
 
         PedidoModel pedido = pedidoRepository.findById(pedidoId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El pedido no existe"));
 
         if (!"PendientePago".equals(pedido.getEstado())) {

@@ -6,6 +6,8 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
+
 import com.api.rapi.models.ClienteModel;
 import com.api.rapi.repositories.ClienteRepository;
 
@@ -73,7 +75,7 @@ public class ClienteServiceImpl implements ClienteService {
 
         ClienteModel cliente = clienteRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El cliente no existe"));
 
         if (datos.getNombre() == null ||
@@ -114,7 +116,7 @@ public class ClienteServiceImpl implements ClienteService {
 
         ClienteModel cliente = clienteRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El cliente no existe"));
 
         clienteRepository.delete(cliente);

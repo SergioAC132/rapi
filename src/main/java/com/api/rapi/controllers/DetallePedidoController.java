@@ -3,9 +3,12 @@ package com.api.rapi.controllers;
 import java.math.BigDecimal;
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.api.rapi.dto.CantidadRequest;
+import com.api.rapi.dto.DetallePedidoRequest;
 import com.api.rapi.models.DetallePedidoModel;
 import com.api.rapi.services.DetallePedidoService;
 
@@ -21,13 +24,11 @@ public class DetallePedidoController {
         this.detallePedidoService = detallePedidoService;
     }
 
-    // Obtener todos los detalles
     @GetMapping
     public List<DetallePedidoModel> obtenerDetalles() {
         return detallePedidoService.obtenerDetalles();
     }
 
-    // Buscar detalle por ID
     @GetMapping("/{id}")
     public ResponseEntity<DetallePedidoModel> obtenerDetallePorId(
             @PathVariable Long id) {
@@ -37,7 +38,6 @@ public class DetallePedidoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Obtener productos de un pedido
     @GetMapping("/pedido/{pedidoId}")
     public List<DetallePedidoModel> obtenerDetallesPorPedido(
             @PathVariable Long pedidoId) {
@@ -45,7 +45,6 @@ public class DetallePedidoController {
         return detallePedidoService.obtenerDetallesPorPedido(pedidoId);
     }
 
-    // Buscar detalles por producto
     @GetMapping("/producto/{productoId}")
     public List<DetallePedidoModel> obtenerDetallesPorProducto(
             @PathVariable Long productoId) {
@@ -53,59 +52,39 @@ public class DetallePedidoController {
         return detallePedidoService.obtenerDetallesPorProducto(productoId);
     }
 
-    // Agregar producto a un pedido
     @PostMapping
     public ResponseEntity<DetallePedidoModel> agregarProducto(
-            @RequestParam Long pedidoId,
-            @RequestParam Long productoId,
-            @RequestParam Integer cantidad) {
+            @RequestBody DetallePedidoRequest solicitud) {
 
         DetallePedidoModel nuevoDetalle =
                 detallePedidoService.agregarProductoAlPedido(
-                        pedidoId, productoId, cantidad);
+                        solicitud.pedidoId(),
+                        solicitud.productoId(),
+                        solicitud.cantidad());
 
-        return ResponseEntity.status(201).body(nuevoDetalle);
+        return ResponseEntity.status(HttpStatus.CREATED).body(nuevoDetalle);
     }
 
-    // Actualizar cantidad de un producto
     @PatchMapping("/{id}/cantidad")
-    public ResponseEntity<DetallePedidoModel> actualizarCantidad(
+    public DetallePedidoModel actualizarCantidad(
             @PathVariable Long id,
-            @RequestParam Integer cantidad) {
+            @RequestBody CantidadRequest solicitud) {
 
-        if (detallePedidoService.buscarDetallePorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        DetallePedidoModel actualizado =
-                detallePedidoService.actualizarCantidad(id, cantidad);
-
-        return ResponseEntity.ok(actualizado);
+        return detallePedidoService.actualizarCantidad(
+                id, solicitud.cantidad());
     }
 
-    // Eliminar un producto del pedido
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminarProducto(
             @PathVariable Long id) {
-
-        if (detallePedidoService.buscarDetallePorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         detallePedidoService.eliminarProductoDelPedido(id);
 
         return ResponseEntity.noContent().build();
     }
 
-    // Calcular el total del pedido
     @GetMapping("/pedido/{pedidoId}/total")
-    public ResponseEntity<BigDecimal> calcularTotalPedido(
-            @PathVariable Long pedidoId) {
-
-        BigDecimal total =
-                detallePedidoService.calcularTotalPedido(pedidoId);
-
-        return ResponseEntity.ok(total);
+    public BigDecimal calcularTotalPedido(@PathVariable Long pedidoId) {
+        return detallePedidoService.calcularTotalPedido(pedidoId);
     }
 }
-

@@ -5,37 +5,41 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.events.PedidoAceptadoEvent;
+import com.api.rapi.events.PedidoCanceladoEvent;
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
 import com.api.rapi.models.ClienteModel;
-import com.api.rapi.models.PagoModel;
 import com.api.rapi.models.PedidoModel;
 import com.api.rapi.models.RestauranteModel;
 
 import com.api.rapi.repositories.ClienteRepository;
-import com.api.rapi.repositories.PagoRepository;
 import com.api.rapi.repositories.PedidoRepository;
 import com.api.rapi.repositories.RestauranteRepository;
 
 @Service
 public class PedidoServiceImpl implements PedidoService {
 
+    private static final long MINUTOS_PARA_ACEPTAR = 5;
+
     private final PedidoRepository pedidoRepository;
     private final ClienteRepository clienteRepository;
     private final RestauranteRepository restauranteRepository;
-    private final PagoRepository pagoRepository;
+    private final ApplicationEventPublisher eventos;
 
     public PedidoServiceImpl(
             PedidoRepository pedidoRepository,
             ClienteRepository clienteRepository,
             RestauranteRepository restauranteRepository,
-            PagoRepository pagoRepository) {
+            ApplicationEventPublisher eventos) {
 
         this.pedidoRepository = pedidoRepository;
         this.clienteRepository = clienteRepository;
         this.restauranteRepository = restauranteRepository;
-        this.pagoRepository = pagoRepository;
+        this.eventos = eventos;
     }
 
     @Override
@@ -78,15 +82,20 @@ public class PedidoServiceImpl implements PedidoService {
             Long restauranteId,
             String direccionEntrega) {
 
+        if (clienteId == null || restauranteId == null) {
+            throw new IllegalArgumentException(
+                    "El cliente y el restaurante son obligatorios");
+        }
+
         ClienteModel cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El cliente no existe"));
 
         RestauranteModel restaurante = restauranteRepository
                 .findById(restauranteId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El restaurante no existe"));
 
         if (!restaurante.isActivo() || !restaurante.isAbierto()) {
@@ -123,26 +132,9 @@ public class PedidoServiceImpl implements PedidoService {
                     "El pedido no está pendiente de pago");
         }
 
-        if (pedido.getTotal() == null ||
-                pedido.getTotal().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalStateException(
-                    "El pedido debe tener productos y un total válido");
-        }
-
-        PagoModel pago = pagoRepository.findByPedidoId(pedidoId)
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "No existe un pago para este pedido"));
-
-        if (!"Confirmado".equals(pago.getEstado())) {
-            throw new IllegalStateException(
-                    "El pago todavía no está confirmado");
-        }
-
-        LocalDateTime ahora = LocalDateTime.now();
-
         pedido.setEstado("PendienteAceptacion");
-        pedido.setFechaLimiteAceptacion(ahora.plusMinutes(5));
+        pedido.setFechaLimiteAceptacion(
+                LocalDateTime.now().plusMinutes(MINUTOS_PARA_ACEPTAR));
 
         return pedidoRepository.save(pedido);
     }
@@ -161,23 +153,21 @@ public class PedidoServiceImpl implements PedidoService {
                     "El pedido no está pendiente de aceptación");
         }
 
-        if (pedido.getFechaLimiteAceptacion() == null) {
-            throw new IllegalStateException(
-                    "El pedido no tiene fecha límite de aceptación");
-        }
-
         LocalDateTime ahora = LocalDateTime.now();
 
         if (!ahora.isBefore(pedido.getFechaLimiteAceptacion())) {
-            cancelarConReembolsoPendiente(pedido);
-
-            return pedidoRepository.save(pedido);
+            return cancelar(pedido, "Cancelado",
+                    "El restaurante no aceptó a tiempo");
         }
 
         pedido.setEstado("Aceptado");
         pedido.setFechaAceptacion(ahora);
 
-        return pedidoRepository.save(pedido);
+        PedidoModel aceptado = pedidoRepository.save(pedido);
+
+        eventos.publishEvent(new PedidoAceptadoEvent(aceptado.getId()));
+
+        return aceptado;
     }
 
     @Override
@@ -194,11 +184,8 @@ public class PedidoServiceImpl implements PedidoService {
                     "Solo se pueden rechazar pedidos pendientes de aceptación");
         }
 
-        cancelarConReembolsoPendiente(pedido);
-
-        pedido.setEstado("Rechazado");
-
-        return pedidoRepository.save(pedido);
+        return cancelar(pedido, "Rechazado",
+                "El restaurante rechazó el pedido");
     }
 
     @Override
@@ -207,9 +194,6 @@ public class PedidoServiceImpl implements PedidoService {
             Long pedidoId, String nuevoEstado) {
 
         PedidoModel pedido = obtenerPedido(pedidoId);
-
-        // Los estados de entrega serán administrados
-        // posteriormente por EntregaService.
 
         if ("Aceptado".equals(pedido.getEstado()) &&
                 "EnPreparacion".equals(nuevoEstado)) {
@@ -225,6 +209,40 @@ public class PedidoServiceImpl implements PedidoService {
 
     @Override
     @Transactional
+    public PedidoModel marcarPedidoEnCamino(Long pedidoId) {
+
+        PedidoModel pedido = obtenerPedido(pedidoId);
+
+        if (!"Aceptado".equals(pedido.getEstado()) &&
+                !"EnPreparacion".equals(pedido.getEstado())) {
+            throw new IllegalStateException(
+                    "El pedido debe estar aceptado o en preparación");
+        }
+
+        pedido.setEstado("EnCamino");
+
+        return pedidoRepository.save(pedido);
+    }
+
+    @Override
+    @Transactional
+    public PedidoModel marcarPedidoEntregado(Long pedidoId) {
+
+        PedidoModel pedido = obtenerPedido(pedidoId);
+
+        if (!"EnCamino".equals(pedido.getEstado())) {
+            throw new IllegalStateException(
+                    "El pedido debe estar en camino");
+        }
+
+        pedido.setEstado("Entregado");
+        pedido.setFechaEntrega(LocalDateTime.now());
+
+        return pedidoRepository.save(pedido);
+    }
+
+    @Override
+    @Transactional
     public PedidoModel cancelarPedido(Long pedidoId) {
 
         PedidoModel pedido = obtenerPedido(pedidoId);
@@ -235,8 +253,8 @@ public class PedidoServiceImpl implements PedidoService {
         }
 
         if ("PendienteAceptacion".equals(pedido.getEstado())) {
-            cancelarConReembolsoPendiente(pedido);
-            return pedidoRepository.save(pedido);
+            return cancelar(pedido, "Cancelado",
+                    "El cliente canceló el pedido");
         }
 
         throw new IllegalStateException(
@@ -260,31 +278,24 @@ public class PedidoServiceImpl implements PedidoService {
 
     @Override
     @Transactional
-    public void cancelarPedidosVencidos() {
-
-        LocalDateTime ahora = LocalDateTime.now();
+    public int cancelarPedidosVencidos() {
 
         List<PedidoModel> vencidos =
-                obtenerPedidosConAceptacionVencida(ahora);
+                obtenerPedidosConAceptacionVencida(LocalDateTime.now());
 
         for (PedidoModel pedido : vencidos) {
-
-            if ("PendienteAceptacion".equals(pedido.getEstado())
-                    && !ahora.isBefore(
-                            pedido.getFechaLimiteAceptacion())) {
-
-                cancelarConReembolsoPendiente(pedido);
-
-                pedidoRepository.save(pedido);
-            }
+            cancelar(pedido, "Cancelado",
+                    "El restaurante no aceptó a tiempo");
         }
+
+        return vencidos.size();
     }
 
     private PedidoModel obtenerPedido(Long id) {
 
         return pedidoRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El pedido no existe"));
     }
 
@@ -299,20 +310,16 @@ public class PedidoServiceImpl implements PedidoService {
         }
     }
 
-    private void cancelarConReembolsoPendiente(
-            PedidoModel pedido) {
+    private PedidoModel cancelar(
+            PedidoModel pedido, String estadoFinal, String motivo) {
 
-        PagoModel pago = pagoRepository
-                .findByPedidoId(pedido.getId())
-                .orElse(null);
+        pedido.setEstado(estadoFinal);
 
-        if (pago != null &&
-                "Confirmado".equals(pago.getEstado())) {
+        PedidoModel cancelado = pedidoRepository.save(pedido);
 
-            pago.setEstado("ReembolsoPendiente");
-            pagoRepository.save(pago);
-        }
+        eventos.publishEvent(
+                new PedidoCanceladoEvent(cancelado.getId(), motivo));
 
-        pedido.setEstado("Cancelado");
+        return cancelado;
     }
 }

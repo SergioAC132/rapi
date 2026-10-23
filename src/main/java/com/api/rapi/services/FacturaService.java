@@ -27,11 +27,6 @@ public interface FacturaService {
 
     FacturaModel procesarFactura(Long facturaId);
 
-    FacturaModel confirmarFactura(
-            Long facturaId,
-            String folioFiscal,
-            String referenciaExterna);
-
-    FacturaModel marcarFacturaConError(Long facturaId);
+    FacturaModel reintentarFactura(Long facturaId);
 
 }

@@ -35,4 +35,6 @@ public interface EntregaService {
 
     EntregaModel confirmarEntrega(Long entregaId);
 
+    int reintentarAsignacionesPendientes();
+
 }

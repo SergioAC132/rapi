@@ -5,10 +5,12 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
+import com.api.rapi.integration.pagos.PasarelaPagos;
+import com.api.rapi.integration.pagos.ResultadoPasarela;
 import com.api.rapi.models.PagoModel;
 import com.api.rapi.models.PedidoModel;
 import com.api.rapi.repositories.PagoRepository;
@@ -20,18 +22,18 @@ public class PagoServiceImpl implements PagoService {
     private final PagoRepository pagoRepository;
     private final PedidoRepository pedidoRepository;
     private final PedidoService pedidoService;
-
-    @Value("${rapi.pagos.modo-pruebas:false}")
-    private boolean modoPruebas;
+    private final PasarelaPagos pasarelaPagos;
 
     public PagoServiceImpl(
             PagoRepository pagoRepository,
             PedidoRepository pedidoRepository,
-            PedidoService pedidoService) {
+            PedidoService pedidoService,
+            PasarelaPagos pasarelaPagos) {
 
         this.pagoRepository = pagoRepository;
         this.pedidoRepository = pedidoRepository;
         this.pedidoService = pedidoService;
+        this.pasarelaPagos = pasarelaPagos;
     }
 
     @Override
@@ -64,8 +66,12 @@ public class PagoServiceImpl implements PagoService {
 
     @Override
     @Transactional
-    public PagoModel registrarPago(
-            Long pedidoId, String metodoPago) {
+    public PagoModel procesarPago(Long pedidoId, String tokenTarjeta) {
+
+        if (tokenTarjeta == null || tokenTarjeta.isBlank()) {
+            throw new IllegalArgumentException(
+                    "El token de la tarjeta es obligatorio");
+        }
 
         PedidoModel pedido = obtenerPedido(pedidoId);
 
@@ -80,100 +86,42 @@ public class PagoServiceImpl implements PagoService {
                     "El pedido debe tener productos y un total válido");
         }
 
-        if (metodoPago == null ||
-                !"Tarjeta".equalsIgnoreCase(metodoPago.trim())) {
-            throw new IllegalArgumentException(
-                    "El método de pago debe ser Tarjeta");
-        }
+        PagoModel pago = pagoRepository.findByPedidoId(pedidoId)
+                .orElseGet(PagoModel::new);
 
-        if (pagoRepository.findByPedidoId(pedidoId).isPresent()) {
+        if (pago.getId() != null && !"Fallido".equals(pago.getEstado())) {
             throw new IllegalStateException(
                     "El pedido ya tiene un pago registrado");
         }
 
-        PagoModel pago = new PagoModel();
-
         pago.setPedido(pedido);
         pago.setMonto(pedido.getTotal());
         pago.setMetodoPago("Tarjeta");
-        pago.setEstado("Pendiente");
-        pago.setFechaPago(null);
-        pago.setReferenciaExterna(null);
 
-        return pagoRepository.save(pago);
-    }
+        ResultadoPasarela resultado = pasarelaPagos.cobrar(
+                pedidoId, pedido.getTotal(), tokenTarjeta.trim());
 
-    @Override
-    @Transactional
-    public PagoModel confirmarPago(
-            Long pagoId, String referenciaExterna) {
-
-        verificarModoPruebas();
-
-        PagoModel pago = obtenerPago(pagoId);
-
-        if (!"Pendiente".equals(pago.getEstado())) {
-            throw new IllegalStateException(
-                    "El pago no está pendiente");
-        }
-
-        validarReferencia(referenciaExterna);
-
-        String referencia = referenciaExterna.trim();
-
-        if (pagoRepository.findByReferenciaExterna(referencia)
-                .isPresent()) {
-            throw new IllegalStateException(
-                    "La referencia de pago ya está registrada");
-        }
-
-        PedidoModel pedido = pago.getPedido();
-
-        if (!"PendientePago".equals(pedido.getEstado())) {
-            throw new IllegalStateException(
-                    "El pedido no está pendiente de pago");
-        }
-
-        if (pago.getMonto().compareTo(pedido.getTotal()) != 0) {
-            throw new IllegalStateException(
-                    "El monto del pago no coincide con el total");
+        if (!resultado.aprobado()) {
+            pago.setEstado("Fallido");
+            pago.setReferenciaExterna(null);
+            pago.setFechaPago(null);
+            return pagoRepository.save(pago);
         }
 
         pago.setEstado("Confirmado");
-        pago.setReferenciaExterna(referencia);
+        pago.setReferenciaExterna(resultado.referencia());
         pago.setFechaPago(LocalDateTime.now());
 
-        PagoModel guardado = pagoRepository.saveAndFlush(pago);
+        PagoModel guardado = pagoRepository.save(pago);
 
-        // Inicia los cinco minutos para que
-        // el restaurante acepte el pedido.
-        pedidoService.confirmarPagoPedido(pedido.getId());
+        pedidoService.confirmarPagoPedido(pedidoId);
 
         return guardado;
     }
 
     @Override
     @Transactional
-    public PagoModel marcarPagoFallido(Long pagoId) {
-
-        verificarModoPruebas();
-
-        PagoModel pago = obtenerPago(pagoId);
-
-        if (!"Pendiente".equals(pago.getEstado())) {
-            throw new IllegalStateException(
-                    "Solo se pueden marcar como fallidos "
-                    + "los pagos pendientes");
-        }
-
-        pago.setEstado("Fallido");
-
-        return pagoRepository.save(pago);
-    }
-
-    @Override
-    @Transactional
-    public PagoModel solicitarReembolso(Long pedidoId) {
+    public PagoModel reembolsarPago(Long pedidoId) {
 
         PedidoModel pedido = obtenerPedido(pedidoId);
 
@@ -185,41 +133,29 @@ public class PagoServiceImpl implements PagoService {
 
         PagoModel pago = pagoRepository.findByPedidoId(pedidoId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "No existe un pago para el pedido"));
 
-        if ("ReembolsoPendiente".equals(pago.getEstado())) {
+        if ("Reembolsado".equals(pago.getEstado())) {
             return pago;
         }
 
-        if (!"Confirmado".equals(pago.getEstado())) {
+        if (!"Confirmado".equals(pago.getEstado()) &&
+                !"ReembolsoPendiente".equals(pago.getEstado())) {
             throw new IllegalStateException(
                     "El pago no permite solicitar un reembolso");
         }
 
-        pago.setEstado("ReembolsoPendiente");
+        ResultadoPasarela resultado = pasarelaPagos.reembolsar(
+                pago.getReferenciaExterna(), pago.getMonto());
 
-        return pagoRepository.save(pago);
-    }
-
-    @Override
-    @Transactional
-    public PagoModel confirmarReembolso(
-            Long pagoId, String referenciaReembolso) {
-
-        verificarModoPruebas();
-
-        PagoModel pago = obtenerPago(pagoId);
-
-        if (!"ReembolsoPendiente".equals(pago.getEstado())) {
-            throw new IllegalStateException(
-                    "El pago no tiene un reembolso pendiente");
+        if (!resultado.aprobado()) {
+            pago.setEstado("ReembolsoPendiente");
+            return pagoRepository.save(pago);
         }
 
-        validarReferencia(referenciaReembolso);
-
         pago.setEstado("Reembolsado");
-        pago.setReferenciaReembolso(referenciaReembolso.trim());
+        pago.setReferenciaReembolso(resultado.referencia());
         pago.setFechaReembolso(LocalDateTime.now());
 
         return pagoRepository.save(pago);
@@ -236,33 +172,7 @@ public class PagoServiceImpl implements PagoService {
 
         return pedidoRepository.findById(pedidoId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El pedido no existe"));
-    }
-
-    private PagoModel obtenerPago(Long pagoId) {
-
-        return pagoRepository.findById(pagoId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "El pago no existe"));
-    }
-
-    private void validarReferencia(String referencia) {
-
-        if (referencia == null || referencia.isBlank()) {
-            throw new IllegalArgumentException(
-                    "La referencia es obligatoria");
-        }
-    }
-
-    private void verificarModoPruebas() {
-
-        if (!modoPruebas) {
-            throw new IllegalStateException(
-                    "Esta operación simulada está deshabilitada. "
-                    + "Se requiere verificar la transacción "
-                    + "con la pasarela de pagos externa");
-        }
     }
 }

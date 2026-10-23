@@ -2,9 +2,11 @@ package com.api.rapi.controllers;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.api.rapi.dto.CalificacionRequest;
 import com.api.rapi.models.CalificacionModel;
 import com.api.rapi.services.CalificacionService;
 
@@ -20,13 +22,11 @@ public class CalificacionController {
         this.calificacionService = calificacionService;
     }
 
-    // Obtener todas las calificaciones
     @GetMapping
     public List<CalificacionModel> obtenerCalificaciones() {
         return calificacionService.obtenerCalificaciones();
     }
 
-    // Buscar calificación por ID
     @GetMapping("/{id}")
     public ResponseEntity<CalificacionModel> obtenerCalificacionPorId(
             @PathVariable Long id) {
@@ -36,7 +36,6 @@ public class CalificacionController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar calificación por pedido
     @GetMapping("/pedido/{pedidoId}")
     public ResponseEntity<CalificacionModel> buscarPorPedido(
             @PathVariable Long pedidoId) {
@@ -46,7 +45,6 @@ public class CalificacionController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar calificaciones por restaurante
     @GetMapping("/restaurante/{restauranteId}")
     public List<CalificacionModel> buscarPorRestaurante(
             @PathVariable Long restauranteId) {
@@ -55,7 +53,6 @@ public class CalificacionController {
                 restauranteId);
     }
 
-    // Buscar calificaciones por cliente
     @GetMapping("/cliente/{clienteId}")
     public List<CalificacionModel> buscarPorCliente(
             @PathVariable Long clienteId) {
@@ -64,54 +61,36 @@ public class CalificacionController {
                 clienteId);
     }
 
-    // Registrar una calificación
     @PostMapping
     public ResponseEntity<CalificacionModel> registrarCalificacion(
-            @RequestParam Long pedidoId,
-            @RequestParam Integer puntuacionRestaurante,
-            @RequestParam Integer puntuacionRepartidor,
-            @RequestParam(required = false) String comentario) {
+            @RequestBody CalificacionRequest solicitud) {
 
         CalificacionModel nuevaCalificacion =
                 calificacionService.registrarCalificacion(
-                        pedidoId,
-                        puntuacionRestaurante,
-                        puntuacionRepartidor,
-                        comentario);
+                        solicitud.pedidoId(),
+                        solicitud.puntuacionRestaurante(),
+                        solicitud.puntuacionRepartidor(),
+                        solicitud.comentario());
 
-        return ResponseEntity.status(201).body(nuevaCalificacion);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(nuevaCalificacion);
     }
 
-    // Actualizar una calificación
     @PutMapping("/{id}")
-    public ResponseEntity<CalificacionModel> actualizarCalificacion(
+    public CalificacionModel actualizarCalificacion(
             @PathVariable Long id,
-            @RequestParam Integer puntuacionRestaurante,
-            @RequestParam Integer puntuacionRepartidor,
-            @RequestParam(required = false) String comentario) {
+            @RequestBody CalificacionRequest solicitud) {
 
-        if (calificacionService.buscarCalificacionPorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        CalificacionModel actualizada =
-                calificacionService.actualizarCalificacion(
-                        id,
-                        puntuacionRestaurante,
-                        puntuacionRepartidor,
-                        comentario);
-
-        return ResponseEntity.ok(actualizada);
+        return calificacionService.actualizarCalificacion(
+                id,
+                solicitud.puntuacionRestaurante(),
+                solicitud.puntuacionRepartidor(),
+                solicitud.comentario());
     }
 
-    // Eliminar una calificación
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminarCalificacion(
             @PathVariable Long id) {
-
-        if (calificacionService.buscarCalificacionPorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         calificacionService.eliminarCalificacion(id);
 

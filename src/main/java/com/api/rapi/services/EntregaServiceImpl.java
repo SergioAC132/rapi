@@ -4,35 +4,41 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.events.EntregaActualizadaEvent;
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
 import com.api.rapi.models.EntregaModel;
 import com.api.rapi.models.PedidoModel;
 import com.api.rapi.models.RepartidorModel;
+import com.api.rapi.models.RestauranteModel;
 
 import com.api.rapi.repositories.EntregaRepository;
-import com.api.rapi.repositories.PedidoRepository;
 import com.api.rapi.repositories.RepartidorRepository;
 
 @Service
 public class EntregaServiceImpl implements EntregaService {
 
     private final EntregaRepository entregaRepository;
-    private final PedidoRepository pedidoRepository;
     private final RepartidorRepository repartidorRepository;
     private final RepartidorService repartidorService;
+    private final PedidoService pedidoService;
+    private final ApplicationEventPublisher eventos;
 
     public EntregaServiceImpl(
             EntregaRepository entregaRepository,
-            PedidoRepository pedidoRepository,
             RepartidorRepository repartidorRepository,
-            RepartidorService repartidorService) {
+            RepartidorService repartidorService,
+            PedidoService pedidoService,
+            ApplicationEventPublisher eventos) {
 
         this.entregaRepository = entregaRepository;
-        this.pedidoRepository = pedidoRepository;
         this.repartidorRepository = repartidorRepository;
         this.repartidorService = repartidorService;
+        this.pedidoService = pedidoService;
+        this.eventos = eventos;
     }
 
     @Override
@@ -64,7 +70,10 @@ public class EntregaServiceImpl implements EntregaService {
     @Transactional
     public EntregaModel crearEntrega(Long pedidoId) {
 
-        PedidoModel pedido = obtenerPedido(pedidoId);
+        PedidoModel pedido = pedidoService.buscarPedidoPorId(pedidoId)
+                .orElseThrow(() ->
+                        new RecursoNoEncontradoException(
+                                "El pedido no existe"));
 
         if (!"Aceptado".equals(pedido.getEstado()) &&
                 !"EnPreparacion".equals(pedido.getEstado())) {
@@ -82,7 +91,7 @@ public class EntregaServiceImpl implements EntregaService {
         entrega.setPedido(pedido);
         entrega.setEstado("PendienteAsignacion");
 
-        return entregaRepository.save(entrega);
+        return guardarYNotificar(entrega);
     }
 
     @Override
@@ -92,20 +101,23 @@ public class EntregaServiceImpl implements EntregaService {
         EntregaModel entrega = obtenerEntrega(entregaId);
         validarPendienteAsignacion(entrega);
 
-        // Para esta versión se toma la ubicación del repartidor
-        // como referencia de búsqueda. Más adelante podremos
-        // utilizar las coordenadas reales del restaurante.
+        RestauranteModel restaurante = entrega.getPedido().getRestaurante();
+
+        if (restaurante.getLatitud() == null ||
+                restaurante.getLongitud() == null) {
+            throw new IllegalStateException(
+                    "El restaurante no tiene ubicación registrada");
+        }
+
         RepartidorModel repartidor = repartidorService
-                .obtenerRepartidoresDisponibles()
-                .stream()
-                .filter(r -> r.getLatitud() != null &&
-                             r.getLongitud() != null)
-                .findFirst()
+                .buscarRepartidorMasCercano(
+                        restaurante.getLatitud(),
+                        restaurante.getLongitud())
                 .orElseThrow(() ->
                         new IllegalStateException(
                                 "No hay repartidores disponibles con ubicación"));
 
-        return asignarRepartidorManual(entregaId, repartidor.getId());
+        return asignar(entrega, repartidor);
     }
 
     @Override
@@ -118,24 +130,10 @@ public class EntregaServiceImpl implements EntregaService {
 
         RepartidorModel repartidor = repartidorRepository.findById(repartidorId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El repartidor no existe"));
 
-        if (!repartidor.isActivo() || !repartidor.isDisponible()) {
-            throw new IllegalStateException(
-                    "El repartidor no está activo o disponible");
-        }
-
-        repartidor.setDisponible(false);
-        repartidorRepository.save(repartidor);
-
-        entrega.setRepartidor(repartidor);
-        entrega.setEstado("Asignada");
-        entrega.setFechaAsignacion(LocalDateTime.now());
-        entrega.setLatitudActual(repartidor.getLatitud());
-        entrega.setLongitudActual(repartidor.getLongitud());
-
-        return entregaRepository.save(entrega);
+        return asignar(entrega, repartidor);
     }
 
     @Override
@@ -152,7 +150,7 @@ public class EntregaServiceImpl implements EntregaService {
         entrega.setEstado("Recogida");
         entrega.setFechaRecogida(LocalDateTime.now());
 
-        return entregaRepository.save(entrega);
+        return guardarYNotificar(entrega);
     }
 
     @Override
@@ -166,14 +164,11 @@ public class EntregaServiceImpl implements EntregaService {
                     "Primero se debe confirmar la recogida");
         }
 
+        pedidoService.marcarPedidoEnCamino(entrega.getPedido().getId());
+
         entrega.setEstado("EnCamino");
 
-        PedidoModel pedido = entrega.getPedido();
-        pedido.setEstado("EnCamino");
-
-        pedidoRepository.save(pedido);
-
-        return entregaRepository.save(entrega);
+        return guardarYNotificar(entrega);
     }
 
     @Override
@@ -185,9 +180,11 @@ public class EntregaServiceImpl implements EntregaService {
 
         EntregaModel entrega = obtenerEntrega(entregaId);
 
-        if (!"EnCamino".equals(entrega.getEstado())) {
+        if (!"Asignada".equals(entrega.getEstado()) &&
+                !"Recogida".equals(entrega.getEstado()) &&
+                !"EnCamino".equals(entrega.getEstado())) {
             throw new IllegalStateException(
-                    "Solo se puede actualizar una entrega en camino");
+                    "Solo se puede actualizar la ubicación de una entrega en curso");
         }
 
         entrega.setLatitudActual(latitud);
@@ -199,7 +196,7 @@ public class EntregaServiceImpl implements EntregaService {
         repartidor.setLongitud(longitud);
         repartidorRepository.save(repartidor);
 
-        return entregaRepository.save(entrega);
+        return guardarYNotificar(entrega);
     }
 
     @Override
@@ -213,34 +210,80 @@ public class EntregaServiceImpl implements EntregaService {
                     "La entrega debe estar en camino");
         }
 
-        LocalDateTime ahora = LocalDateTime.now();
+        pedidoService.marcarPedidoEntregado(entrega.getPedido().getId());
 
         entrega.setEstado("Entregada");
-        entrega.setFechaEntrega(ahora);
-
-        PedidoModel pedido = entrega.getPedido();
-        pedido.setEstado("Entregado");
-        pedido.setFechaEntrega(ahora);
-        pedidoRepository.save(pedido);
+        entrega.setFechaEntrega(LocalDateTime.now());
 
         RepartidorModel repartidor = entrega.getRepartidor();
         repartidor.setDisponible(true);
         repartidorRepository.save(repartidor);
 
-        return entregaRepository.save(entrega);
+        return guardarYNotificar(entrega);
     }
 
-    private PedidoModel obtenerPedido(Long id) {
-        return pedidoRepository.findById(id)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "El pedido no existe"));
+    @Override
+    @Transactional
+    public int reintentarAsignacionesPendientes() {
+
+        int asignadas = 0;
+
+        for (EntregaModel entrega :
+                entregaRepository.findByEstado("PendienteAsignacion")) {
+
+            try {
+                asignarRepartidor(entrega.getId());
+                asignadas++;
+            } catch (IllegalStateException e) {
+                continue;
+            }
+        }
+
+        return asignadas;
+    }
+
+    private EntregaModel asignar(
+            EntregaModel entrega, RepartidorModel repartidor) {
+
+        if (!repartidor.isActivo() || !repartidor.isDisponible()) {
+            throw new IllegalStateException(
+                    "El repartidor no está activo o disponible");
+        }
+
+        repartidor.setDisponible(false);
+        repartidorRepository.save(repartidor);
+
+        entrega.setRepartidor(repartidor);
+        entrega.setEstado("Asignada");
+        entrega.setFechaAsignacion(LocalDateTime.now());
+        entrega.setLatitudActual(repartidor.getLatitud());
+        entrega.setLongitudActual(repartidor.getLongitud());
+
+        return guardarYNotificar(entrega);
+    }
+
+    private EntregaModel guardarYNotificar(EntregaModel entrega) {
+
+        EntregaModel guardada = entregaRepository.save(entrega);
+
+        RepartidorModel repartidor = guardada.getRepartidor();
+
+        eventos.publishEvent(new EntregaActualizadaEvent(
+                guardada.getId(),
+                guardada.getPedido().getId(),
+                guardada.getEstado(),
+                repartidor != null ? repartidor.getId() : null,
+                guardada.getLatitudActual(),
+                guardada.getLongitudActual(),
+                LocalDateTime.now()));
+
+        return guardada;
     }
 
     private EntregaModel obtenerEntrega(Long id) {
         return entregaRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "La entrega no existe"));
     }
 

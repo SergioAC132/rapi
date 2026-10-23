@@ -6,6 +6,8 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
+
 import com.api.rapi.models.RestauranteModel;
 import com.api.rapi.repositories.RestauranteRepository;
 
@@ -57,27 +59,16 @@ public class RestauranteServiceImpl implements RestauranteService {
     public RestauranteModel registrarRestaurante(
             RestauranteModel restaurante) {
 
-        if (restaurante.getNombre() == null ||
-                restaurante.getNombre().isBlank()) {
-            throw new IllegalArgumentException(
-                    "El nombre del restaurante es obligatorio");
-        }
-
-        if (restaurante.getDireccion() == null ||
-                restaurante.getDireccion().isBlank()) {
-            throw new IllegalArgumentException(
-                    "La dirección del restaurante es obligatoria");
-        }
-
-        if (restaurante.getTipoComida() == null ||
-                restaurante.getTipoComida().isBlank()) {
-            throw new IllegalArgumentException(
-                    "El tipo de comida es obligatorio");
-        }
+        validarRestaurante(restaurante);
 
         restaurante.setId(null);
         restaurante.setNombre(restaurante.getNombre().trim());
         restaurante.setDireccion(restaurante.getDireccion().trim());
+        restaurante.setTipoComida(restaurante.getTipoComida().trim());
+
+        if (!restaurante.isActivo()) {
+            restaurante.setAbierto(false);
+        }
 
         return restauranteRepository.save(restaurante);
     }
@@ -89,8 +80,28 @@ public class RestauranteServiceImpl implements RestauranteService {
 
         RestauranteModel restaurante = restauranteRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El restaurante no existe"));
+
+        validarRestaurante(datos);
+
+        restaurante.setNombre(datos.getNombre().trim());
+        restaurante.setDireccion(datos.getDireccion().trim());
+        restaurante.setTelefono(datos.getTelefono());
+        restaurante.setCorreo(datos.getCorreo());
+        restaurante.setTipoComida(datos.getTipoComida().trim());
+        restaurante.setLatitud(datos.getLatitud());
+        restaurante.setLongitud(datos.getLongitud());
+
+        return restauranteRepository.save(restaurante);
+    }
+
+    private void validarRestaurante(RestauranteModel datos) {
+
+        if (datos == null) {
+            throw new IllegalArgumentException(
+                    "Los datos del restaurante son obligatorios");
+        }
 
         if (datos.getNombre() == null ||
                 datos.getNombre().isBlank()) {
@@ -110,13 +121,15 @@ public class RestauranteServiceImpl implements RestauranteService {
                     "El tipo de comida es obligatorio");
         }
 
-        restaurante.setNombre(datos.getNombre().trim());
-        restaurante.setDireccion(datos.getDireccion().trim());
-        restaurante.setTelefono(datos.getTelefono());
-        restaurante.setCorreo(datos.getCorreo());
-        restaurante.setTipoComida(datos.getTipoComida().trim());
+        Double latitud = datos.getLatitud();
+        Double longitud = datos.getLongitud();
 
-        return restauranteRepository.save(restaurante);
+        if (latitud == null || longitud == null ||
+                latitud < -90 || latitud > 90 ||
+                longitud < -180 || longitud > 180) {
+            throw new IllegalArgumentException(
+                    "La ubicación del restaurante es obligatoria y debe ser válida");
+        }
     }
 
     @Override
@@ -126,7 +139,7 @@ public class RestauranteServiceImpl implements RestauranteService {
 
         RestauranteModel restaurante = restauranteRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El restaurante no existe"));
 
         if (abierto && !restaurante.isActivo()) {
@@ -145,7 +158,7 @@ public class RestauranteServiceImpl implements RestauranteService {
 
         RestauranteModel restaurante = restauranteRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El restaurante no existe"));
 
         restaurante.setActivo(activo);
@@ -163,7 +176,7 @@ public class RestauranteServiceImpl implements RestauranteService {
 
         RestauranteModel restaurante = restauranteRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El restaurante no existe"));
 
         restauranteRepository.delete(restaurante);

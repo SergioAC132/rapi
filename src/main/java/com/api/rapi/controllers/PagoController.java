@@ -2,9 +2,11 @@ package com.api.rapi.controllers;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.api.rapi.dto.PagoRequest;
 import com.api.rapi.models.PagoModel;
 import com.api.rapi.services.PagoService;
 
@@ -18,13 +20,11 @@ public class PagoController {
         this.pagoService = pagoService;
     }
 
-    // Obtener todos los pagos
     @GetMapping
     public List<PagoModel> obtenerPagos() {
         return pagoService.obtenerPagos();
     }
 
-    // Buscar pago por ID
     @GetMapping("/{id}")
     public ResponseEntity<PagoModel> obtenerPagoPorId(
             @PathVariable Long id) {
@@ -34,7 +34,6 @@ public class PagoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar pago por pedido
     @GetMapping("/pedido/{pedidoId}")
     public ResponseEntity<PagoModel> obtenerPagoPorPedido(
             @PathVariable Long pedidoId) {
@@ -44,7 +43,6 @@ public class PagoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar pago por referencia externa
     @GetMapping("/referencia")
     public ResponseEntity<PagoModel> buscarPorReferencia(
             @RequestParam String referenciaExterna) {
@@ -54,7 +52,6 @@ public class PagoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar pagos por estado
     @GetMapping("/estado")
     public List<PagoModel> buscarPagosPorEstado(
             @RequestParam String estado) {
@@ -62,36 +59,27 @@ public class PagoController {
         return pagoService.buscarPagosPorEstado(estado);
     }
 
-    // Registrar un pago pendiente
     @PostMapping
-    public ResponseEntity<PagoModel> registrarPago(
-            @RequestParam Long pedidoId,
-            @RequestParam String metodoPago) {
+    public ResponseEntity<PagoModel> procesarPago(
+            @RequestBody PagoRequest solicitud) {
 
-        PagoModel nuevoPago = pagoService.registrarPago(
-                pedidoId, metodoPago);
+        PagoModel pago = pagoService.procesarPago(
+                solicitud.pedidoId(), solicitud.tokenTarjeta());
 
-        return ResponseEntity.status(201).body(nuevoPago);
+        HttpStatus estado = "Fallido".equals(pago.getEstado())
+                ? HttpStatus.PAYMENT_REQUIRED
+                : HttpStatus.CREATED;
+
+        return ResponseEntity.status(estado).body(pago);
     }
 
-    // Solicitar reembolso de un pedido cancelado
     @PostMapping("/pedido/{pedidoId}/reembolso")
-    public ResponseEntity<PagoModel> solicitarReembolso(
-            @PathVariable Long pedidoId) {
-
-        PagoModel pago = pagoService.solicitarReembolso(pedidoId);
-
-        return ResponseEntity.ok(pago);
+    public PagoModel reembolsarPago(@PathVariable Long pedidoId) {
+        return pagoService.reembolsarPago(pedidoId);
     }
 
-    // Verificar si un pedido tiene pago confirmado
     @GetMapping("/pedido/{pedidoId}/confirmado")
-    public ResponseEntity<Boolean> verificarPagoConfirmado(
-            @PathVariable Long pedidoId) {
-
-        boolean confirmado =
-                pagoService.verificarPagoConfirmado(pedidoId);
-
-        return ResponseEntity.ok(confirmado);
+    public boolean verificarPagoConfirmado(@PathVariable Long pedidoId) {
+        return pagoService.verificarPagoConfirmado(pedidoId);
     }
 }

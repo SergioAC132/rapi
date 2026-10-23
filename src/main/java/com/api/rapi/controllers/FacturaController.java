@@ -2,9 +2,11 @@ package com.api.rapi.controllers;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.api.rapi.dto.FacturaRequest;
 import com.api.rapi.models.FacturaModel;
 import com.api.rapi.services.FacturaService;
 
@@ -18,13 +20,11 @@ public class FacturaController {
         this.facturaService = facturaService;
     }
 
-    // Obtener todas las facturas
     @GetMapping
     public List<FacturaModel> obtenerFacturas() {
         return facturaService.obtenerFacturas();
     }
 
-    // Buscar factura por ID
     @GetMapping("/{id}")
     public ResponseEntity<FacturaModel> obtenerFacturaPorId(
             @PathVariable Long id) {
@@ -34,7 +34,6 @@ public class FacturaController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar factura por pedido
     @GetMapping("/pedido/{pedidoId}")
     public ResponseEntity<FacturaModel> buscarPorPedido(
             @PathVariable Long pedidoId) {
@@ -44,7 +43,6 @@ public class FacturaController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar factura por folio fiscal
     @GetMapping("/folio")
     public ResponseEntity<FacturaModel> buscarPorFolio(
             @RequestParam String folioFiscal) {
@@ -54,7 +52,6 @@ public class FacturaController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar facturas por estado
     @GetMapping("/estado")
     public List<FacturaModel> buscarPorEstado(
             @RequestParam String estado) {
@@ -62,7 +59,6 @@ public class FacturaController {
         return facturaService.buscarFacturasPorEstado(estado);
     }
 
-    // Buscar facturas por RFC
     @GetMapping("/rfc")
     public List<FacturaModel> buscarPorRFC(
             @RequestParam String rfcReceptor) {
@@ -70,33 +66,33 @@ public class FacturaController {
         return facturaService.buscarFacturasPorRFC(rfcReceptor);
     }
 
-    // Solicitar una factura
     @PostMapping
     public ResponseEntity<FacturaModel> solicitarFactura(
-            @RequestParam Long pedidoId,
-            @RequestParam String rfcReceptor,
-            @RequestParam String razonSocial,
-            @RequestParam String correoFacturacion) {
+            @RequestBody FacturaRequest solicitud) {
 
-        FacturaModel nuevaFactura =
-                facturaService.solicitarFactura(
-                        pedidoId,
-                        rfcReceptor,
-                        razonSocial,
-                        correoFacturacion);
+        FacturaModel nuevaFactura = facturaService.solicitarFactura(
+                solicitud.pedidoId(),
+                solicitud.rfcReceptor(),
+                solicitud.razonSocial(),
+                solicitud.correoFacturacion());
 
-        return ResponseEntity.status(201).body(nuevaFactura);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(nuevaFactura);
     }
 
-    // Consultar el estado de una factura
+    @PostMapping("/{id}/reintentar")
+    public ResponseEntity<FacturaModel> reintentarFactura(
+            @PathVariable Long id) {
+
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(facturaService.reintentarFactura(id));
+    }
+
     @GetMapping("/{id}/estado")
     public ResponseEntity<String> consultarEstado(
             @PathVariable Long id) {
 
         return facturaService.buscarFacturaPorId(id)
-                .map(factura -> ResponseEntity.ok(
-                        factura.getEstado()))
+                .map(factura -> ResponseEntity.ok(factura.getEstado()))
                 .orElse(ResponseEntity.notFound().build());
     }
 }
-

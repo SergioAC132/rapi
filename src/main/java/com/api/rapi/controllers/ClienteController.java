@@ -2,6 +2,7 @@ package com.api.rapi.controllers;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,13 +19,11 @@ public class ClienteController {
         this.clienteService = clienteService;
     }
 
-    // Obtener todos los clientes
     @GetMapping
     public List<ClienteModel> obtenerClientes() {
         return clienteService.obtenerClientes();
     }
 
-    // Buscar cliente por ID
     @GetMapping("/{id}")
     public ResponseEntity<ClienteModel> obtenerClientePorId(
             @PathVariable Long id) {
@@ -34,7 +33,6 @@ public class ClienteController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar cliente por correo
     @GetMapping("/correo")
     public ResponseEntity<ClienteModel> buscarPorCorreo(
             @RequestParam String correo) {
@@ -44,7 +42,6 @@ public class ClienteController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar clientes por nombre
     @GetMapping("/buscar")
     public List<ClienteModel> buscarPorNombre(
             @RequestParam String nombre) {
@@ -52,7 +49,6 @@ public class ClienteController {
         return clienteService.buscarClientesPorNombre(nombre);
     }
 
-    // Registrar cliente
     @PostMapping
     public ResponseEntity<ClienteModel> registrarCliente(
             @RequestBody ClienteModel cliente) {
@@ -60,18 +56,13 @@ public class ClienteController {
         ClienteModel nuevoCliente =
                 clienteService.registrarCliente(cliente);
 
-        return ResponseEntity.status(201).body(nuevoCliente);
+        return ResponseEntity.status(HttpStatus.CREATED).body(nuevoCliente);
     }
 
-    // Actualizar cliente
     @PutMapping("/{id}")
     public ResponseEntity<ClienteModel> actualizarCliente(
             @PathVariable Long id,
             @RequestBody ClienteModel cliente) {
-
-        if (clienteService.buscarClientePorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         ClienteModel actualizado =
                 clienteService.actualizarCliente(id, cliente);
@@ -79,14 +70,9 @@ public class ClienteController {
         return ResponseEntity.ok(actualizado);
     }
 
-    // Eliminar cliente
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminarCliente(
             @PathVariable Long id) {
-
-        if (clienteService.buscarClientePorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         clienteService.eliminarCliente(id);
 

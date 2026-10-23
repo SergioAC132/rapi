@@ -2,9 +2,11 @@ package com.api.rapi.controllers;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.api.rapi.dto.ProductoRequest;
 import com.api.rapi.models.ProductoModel;
 import com.api.rapi.services.ProductoService;
 
@@ -18,13 +20,11 @@ public class ProductoController {
         this.productoService = productoService;
     }
 
-    // Obtener todos los productos
     @GetMapping
     public List<ProductoModel> obtenerProductos() {
         return productoService.obtenerProductos();
     }
 
-    // Buscar producto por ID
     @GetMapping("/{id}")
     public ResponseEntity<ProductoModel> obtenerProductoPorId(
             @PathVariable Long id) {
@@ -34,7 +34,6 @@ public class ProductoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Obtener productos de un restaurante
     @GetMapping("/restaurante/{restauranteId}")
     public List<ProductoModel> obtenerProductosPorRestaurante(
             @PathVariable Long restauranteId) {
@@ -43,7 +42,6 @@ public class ProductoController {
                 restauranteId);
     }
 
-    // Obtener productos disponibles de un restaurante
     @GetMapping("/restaurante/{restauranteId}/disponibles")
     public List<ProductoModel> obtenerProductosDisponibles(
             @PathVariable Long restauranteId) {
@@ -52,7 +50,6 @@ public class ProductoController {
                 restauranteId);
     }
 
-    // Buscar productos por nombre
     @GetMapping("/buscar")
     public List<ProductoModel> buscarProductosPorNombre(
             @RequestParam String nombre) {
@@ -60,7 +57,6 @@ public class ProductoController {
         return productoService.buscarProductosPorNombre(nombre);
     }
 
-    // Buscar productos por nombre y restaurante
     @GetMapping("/buscar/restaurante/{restauranteId}")
     public List<ProductoModel> buscarPorNombreYRestaurante(
             @PathVariable Long restauranteId,
@@ -70,42 +66,31 @@ public class ProductoController {
                 restauranteId, nombre);
     }
 
-    // Registrar producto
     @PostMapping
     public ResponseEntity<ProductoModel> registrarProducto(
-            @RequestBody ProductoModel producto) {
+            @RequestBody ProductoRequest solicitud) {
 
-        ProductoModel nuevoProducto =
-                productoService.registrarProducto(producto);
+        ProductoModel nuevoProducto = productoService.registrarProducto(
+                solicitud.restauranteId(), aModelo(solicitud));
 
-        return ResponseEntity.status(201).body(nuevoProducto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(nuevoProducto);
     }
 
-    // Actualizar producto
     @PutMapping("/{id}")
     public ResponseEntity<ProductoModel> actualizarProducto(
             @PathVariable Long id,
-            @RequestBody ProductoModel producto) {
-
-        if (productoService.buscarProductoPorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
+            @RequestBody ProductoRequest solicitud) {
 
         ProductoModel actualizado =
-                productoService.actualizarProducto(id, producto);
+                productoService.actualizarProducto(id, aModelo(solicitud));
 
         return ResponseEntity.ok(actualizado);
     }
 
-    // Cambiar disponibilidad del producto
     @PatchMapping("/{id}/disponibilidad")
     public ResponseEntity<ProductoModel> cambiarDisponibilidad(
             @PathVariable Long id,
             @RequestParam boolean disponible) {
-
-        if (productoService.buscarProductoPorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         ProductoModel actualizado =
                 productoService.cambiarDisponibilidad(id, disponible);
@@ -113,17 +98,24 @@ public class ProductoController {
         return ResponseEntity.ok(actualizado);
     }
 
-    // Eliminar producto
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminarProducto(
             @PathVariable Long id) {
 
-        if (productoService.buscarProductoPorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
         productoService.eliminarProducto(id);
 
         return ResponseEntity.noContent().build();
+    }
+
+    private ProductoModel aModelo(ProductoRequest solicitud) {
+
+        ProductoModel producto = new ProductoModel();
+
+        producto.setNombre(solicitud.nombre());
+        producto.setDescripcion(solicitud.descripcion());
+        producto.setPrecio(solicitud.precio());
+        producto.setDisponible(!Boolean.FALSE.equals(solicitud.disponible()));
+
+        return producto;
     }
 }

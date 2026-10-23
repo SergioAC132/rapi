@@ -3,9 +3,11 @@ package com.api.rapi.controllers;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.api.rapi.dto.PedidoRequest;
 import com.api.rapi.models.PedidoModel;
 import com.api.rapi.services.PedidoService;
 
@@ -19,13 +21,11 @@ public class PedidoController {
         this.pedidoService = pedidoService;
     }
 
-    // Obtener todos los pedidos
     @GetMapping
     public List<PedidoModel> obtenerPedidos() {
         return pedidoService.obtenerPedidos();
     }
 
-    // Buscar pedido por ID
     @GetMapping("/{id}")
     public ResponseEntity<PedidoModel> obtenerPedidoPorId(
             @PathVariable Long id) {
@@ -35,7 +35,6 @@ public class PedidoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar pedidos por cliente
     @GetMapping("/cliente/{clienteId}")
     public List<PedidoModel> buscarPorCliente(
             @PathVariable Long clienteId) {
@@ -43,7 +42,6 @@ public class PedidoController {
         return pedidoService.buscarPedidosPorCliente(clienteId);
     }
 
-    // Buscar pedidos por restaurante
     @GetMapping("/restaurante/{restauranteId}")
     public List<PedidoModel> buscarPorRestaurante(
             @PathVariable Long restauranteId) {
@@ -51,7 +49,6 @@ public class PedidoController {
         return pedidoService.buscarPedidosPorRestaurante(restauranteId);
     }
 
-    // Buscar pedidos por estado
     @GetMapping("/estado")
     public List<PedidoModel> buscarPorEstado(
             @RequestParam String estado) {
@@ -59,7 +56,6 @@ public class PedidoController {
         return pedidoService.buscarPedidosPorEstado(estado);
     }
 
-    // Buscar pedidos por restaurante y estado
     @GetMapping("/restaurante/{restauranteId}/estado")
     public List<PedidoModel> buscarPorRestauranteYEstado(
             @PathVariable Long restauranteId,
@@ -69,66 +65,47 @@ public class PedidoController {
                 restauranteId, estado);
     }
 
-    // Crear un pedido
     @PostMapping
     public ResponseEntity<PedidoModel> crearPedido(
-            @RequestParam Long clienteId,
-            @RequestParam Long restauranteId,
-            @RequestParam String direccionEntrega) {
+            @RequestBody PedidoRequest solicitud) {
 
         PedidoModel nuevoPedido = pedidoService.crearPedido(
-                clienteId, restauranteId, direccionEntrega);
+                solicitud.clienteId(),
+                solicitud.restauranteId(),
+                solicitud.direccionEntrega());
 
-        return ResponseEntity.status(201).body(nuevoPedido);
+        return ResponseEntity.status(HttpStatus.CREATED).body(nuevoPedido);
     }
 
-    // Aceptar un pedido
     @PatchMapping("/{id}/aceptar")
-    public ResponseEntity<PedidoModel> aceptarPedido(
+    public PedidoModel aceptarPedido(
             @PathVariable Long id,
             @RequestParam Long restauranteId) {
 
-        PedidoModel actualizado = pedidoService.aceptarPedido(
-                id, restauranteId);
-
-        return ResponseEntity.ok(actualizado);
+        return pedidoService.aceptarPedido(id, restauranteId);
     }
 
-    // Rechazar un pedido
     @PatchMapping("/{id}/rechazar")
-    public ResponseEntity<PedidoModel> rechazarPedido(
+    public PedidoModel rechazarPedido(
             @PathVariable Long id,
             @RequestParam Long restauranteId) {
 
-        PedidoModel actualizado = pedidoService.rechazarPedido(
-                id, restauranteId);
-
-        return ResponseEntity.ok(actualizado);
+        return pedidoService.rechazarPedido(id, restauranteId);
     }
 
-    // Cambiar el estado de un pedido
     @PatchMapping("/{id}/estado")
-    public ResponseEntity<PedidoModel> cambiarEstadoPedido(
+    public PedidoModel cambiarEstadoPedido(
             @PathVariable Long id,
             @RequestParam String nuevoEstado) {
 
-        PedidoModel actualizado = pedidoService.cambiarEstadoPedido(
-                id, nuevoEstado);
-
-        return ResponseEntity.ok(actualizado);
+        return pedidoService.cambiarEstadoPedido(id, nuevoEstado);
     }
 
-    // Cancelar un pedido
     @PatchMapping("/{id}/cancelar")
-    public ResponseEntity<PedidoModel> cancelarPedido(
-            @PathVariable Long id) {
-
-        PedidoModel actualizado = pedidoService.cancelarPedido(id);
-
-        return ResponseEntity.ok(actualizado);
+    public PedidoModel cancelarPedido(@PathVariable Long id) {
+        return pedidoService.cancelarPedido(id);
     }
 
-    // Consultar pedidos cuyo tiempo de aceptación venció
     @GetMapping("/vencidos")
     public List<PedidoModel> obtenerPedidosVencidos() {
 

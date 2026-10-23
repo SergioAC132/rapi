@@ -34,11 +34,15 @@ public interface PedidoService {
 
     PedidoModel cambiarEstadoPedido(Long pedidoId, String nuevoEstado);
 
+    PedidoModel marcarPedidoEnCamino(Long pedidoId);
+
+    PedidoModel marcarPedidoEntregado(Long pedidoId);
+
     PedidoModel cancelarPedido(Long pedidoId);
 
     List<PedidoModel> obtenerPedidosConAceptacionVencida(
             LocalDateTime fechaActual);
 
-    void cancelarPedidosVencidos();
+    int cancelarPedidosVencidos();
 
 }

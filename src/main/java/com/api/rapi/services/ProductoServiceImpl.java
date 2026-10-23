@@ -7,6 +7,8 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
+
 import com.api.rapi.models.ProductoModel;
 import com.api.rapi.models.RestauranteModel;
 import com.api.rapi.repositories.ProductoRepository;
@@ -62,20 +64,20 @@ public class ProductoServiceImpl implements ProductoService {
 
     @Override
     @Transactional
-    public ProductoModel registrarProducto(ProductoModel producto) {
+    public ProductoModel registrarProducto(
+            Long restauranteId, ProductoModel producto) {
 
         validarProducto(producto);
 
-        if (producto.getRestaurante() == null ||
-                producto.getRestaurante().getId() == null) {
+        if (restauranteId == null) {
             throw new IllegalArgumentException(
                     "Debes indicar el restaurante del producto");
         }
 
         RestauranteModel restaurante = restauranteRepository
-                .findById(producto.getRestaurante().getId())
+                .findById(restauranteId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El restaurante no existe"));
 
         if (!restaurante.isActivo()) {
@@ -96,7 +98,7 @@ public class ProductoServiceImpl implements ProductoService {
 
         ProductoModel producto = productoRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El producto no existe"));
 
         validarProducto(datos);
@@ -115,7 +117,7 @@ public class ProductoServiceImpl implements ProductoService {
 
         ProductoModel producto = productoRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El producto no existe"));
 
         if (disponible && !producto.getRestaurante().isActivo()) {
@@ -134,7 +136,7 @@ public class ProductoServiceImpl implements ProductoService {
 
         ProductoModel producto = productoRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El producto no existe"));
 
         productoRepository.delete(producto);

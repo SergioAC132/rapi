@@ -7,6 +7,8 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
+
 import com.api.rapi.models.CalificacionModel;
 import com.api.rapi.models.PedidoModel;
 
@@ -73,7 +75,7 @@ public class CalificacionServiceImpl implements CalificacionService {
 
         PedidoModel pedido = pedidoRepository.findById(pedidoId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El pedido no existe"));
 
         if (!"Entregado".equals(pedido.getEstado())) {
@@ -112,7 +114,7 @@ public class CalificacionServiceImpl implements CalificacionService {
         CalificacionModel calificacion = calificacionRepository
                 .findById(calificacionId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "La calificación no existe"));
 
         calificacion.setPuntuacionRestaurante(puntuacionRestaurante);
@@ -129,7 +131,7 @@ public class CalificacionServiceImpl implements CalificacionService {
         CalificacionModel calificacion = calificacionRepository
                 .findById(calificacionId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "La calificación no existe"));
 
         calificacionRepository.delete(calificacion);

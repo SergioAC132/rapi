@@ -20,7 +20,7 @@ public interface ProductoService {
     List<ProductoModel> buscarProductosPorNombreYRestaurante(
             Long restauranteId, String nombre);
 
-    ProductoModel registrarProducto(ProductoModel producto);
+    ProductoModel registrarProducto(Long restauranteId, ProductoModel producto);
 
     ProductoModel actualizarProducto(Long id, ProductoModel producto);
 

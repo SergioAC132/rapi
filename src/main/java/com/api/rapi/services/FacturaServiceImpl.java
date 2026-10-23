@@ -5,10 +5,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.api.rapi.events.FacturaSolicitadaEvent;
+import com.api.rapi.exceptions.RecursoNoEncontradoException;
+import com.api.rapi.integration.facturacion.ResultadoFacturacion;
+import com.api.rapi.integration.facturacion.SistemaFacturacion;
 import com.api.rapi.models.FacturaModel;
 import com.api.rapi.models.PedidoModel;
 import com.api.rapi.repositories.FacturaRepository;
@@ -21,18 +25,21 @@ public class FacturaServiceImpl implements FacturaService {
     private final FacturaRepository facturaRepository;
     private final PedidoRepository pedidoRepository;
     private final PagoRepository pagoRepository;
-
-    @Value("${rapi.facturacion.modo-pruebas:false}")
-    private boolean modoPruebas;
+    private final SistemaFacturacion sistemaFacturacion;
+    private final ApplicationEventPublisher eventos;
 
     public FacturaServiceImpl(
             FacturaRepository facturaRepository,
             PedidoRepository pedidoRepository,
-            PagoRepository pagoRepository) {
+            PagoRepository pagoRepository,
+            SistemaFacturacion sistemaFacturacion,
+            ApplicationEventPublisher eventos) {
 
         this.facturaRepository = facturaRepository;
         this.pedidoRepository = pedidoRepository;
         this.pagoRepository = pagoRepository;
+        this.sistemaFacturacion = sistemaFacturacion;
+        this.eventos = eventos;
     }
 
     @Override
@@ -77,7 +84,7 @@ public class FacturaServiceImpl implements FacturaService {
 
         PedidoModel pedido = pedidoRepository.findById(pedidoId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "El pedido no existe"));
 
         if (facturaRepository.existsByPedidoId(pedidoId)) {
@@ -99,6 +106,12 @@ public class FacturaServiceImpl implements FacturaService {
                 correoFacturacion.isBlank()) {
             throw new IllegalArgumentException(
                     "El correo de facturación es obligatorio");
+        }
+
+        if ("Cancelado".equals(pedido.getEstado()) ||
+                "Rechazado".equals(pedido.getEstado())) {
+            throw new IllegalStateException(
+                    "No se pueden facturar pedidos cancelados o rechazados");
         }
 
         boolean pagoConfirmado = pagoRepository
@@ -125,7 +138,11 @@ public class FacturaServiceImpl implements FacturaService {
         factura.setEstado("Solicitada");
         factura.setFechaSolicitud(LocalDateTime.now());
 
-        return facturaRepository.save(factura);
+        FacturaModel guardada = facturaRepository.save(factura);
+
+        eventos.publishEvent(new FacturaSolicitadaEvent(guardada.getId()));
+
+        return guardada;
     }
 
     @Override
@@ -140,55 +157,18 @@ public class FacturaServiceImpl implements FacturaService {
         }
 
         factura.setEstado("EnProceso");
+        facturaRepository.saveAndFlush(factura);
 
-        // Pendiente: enviar la solicitud al sistema
-        // de facturación heredado mediante un adaptador.
+        ResultadoFacturacion resultado =
+                sistemaFacturacion.emitirFactura(factura);
 
-        return facturaRepository.save(factura);
-    }
-
-    @Override
-    @Transactional
-    public FacturaModel confirmarFactura(
-            Long facturaId,
-            String folioFiscal,
-            String referenciaExterna) {
-
-        verificarModoPruebas();
-
-        FacturaModel factura = obtenerFactura(facturaId);
-
-        if (!"EnProceso".equals(factura.getEstado())) {
-            throw new IllegalStateException(
-                    "La factura no está en proceso");
+        if (!resultado.exito()) {
+            factura.setEstado("Error");
+            return facturaRepository.save(factura);
         }
 
-        if (folioFiscal == null || folioFiscal.isBlank()) {
-            throw new IllegalArgumentException(
-                    "El folio fiscal es obligatorio");
-        }
-
-        if (referenciaExterna == null ||
-                referenciaExterna.isBlank()) {
-            throw new IllegalArgumentException(
-                    "La referencia externa es obligatoria");
-        }
-
-        String folio = folioFiscal.trim();
-        String referencia = referenciaExterna.trim();
-
-        Optional<FacturaModel> facturaExistente =
-                facturaRepository.findByFolioFiscal(folio);
-
-        if (facturaExistente.isPresent() &&
-                !facturaExistente.get().getId().equals(facturaId)) {
-
-            throw new IllegalStateException(
-                    "El folio fiscal ya está registrado");
-        }
-
-        factura.setFolioFiscal(folio);
-        factura.setReferenciaExterna(referencia);
+        factura.setFolioFiscal(resultado.folioFiscal());
+        factura.setReferenciaExterna(resultado.referencia());
         factura.setFechaEmision(LocalDateTime.now());
         factura.setEstado("Emitida");
 
@@ -197,37 +177,29 @@ public class FacturaServiceImpl implements FacturaService {
 
     @Override
     @Transactional
-    public FacturaModel marcarFacturaConError(Long facturaId) {
-
-        verificarModoPruebas();
+    public FacturaModel reintentarFactura(Long facturaId) {
 
         FacturaModel factura = obtenerFactura(facturaId);
 
-        if (!"EnProceso".equals(factura.getEstado())) {
+        if (!"Error".equals(factura.getEstado())) {
             throw new IllegalStateException(
-                    "Solo se pueden marcar con error "
-                    + "las facturas en proceso");
+                    "Solo se pueden reintentar facturas con error");
         }
 
-        factura.setEstado("Error");
+        factura.setEstado("Solicitada");
 
-        return facturaRepository.save(factura);
+        FacturaModel guardada = facturaRepository.save(factura);
+
+        eventos.publishEvent(new FacturaSolicitadaEvent(guardada.getId()));
+
+        return guardada;
     }
 
     private FacturaModel obtenerFactura(Long id) {
 
         return facturaRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new RecursoNoEncontradoException(
                                 "La factura no existe"));
-    }
-
-    private void verificarModoPruebas() {
-
-        if (!modoPruebas) {
-            throw new IllegalStateException(
-                    "La confirmación simulada de facturas "
-                    + "está deshabilitada");
-        }
     }
 }

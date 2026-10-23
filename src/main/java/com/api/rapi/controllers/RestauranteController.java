@@ -2,6 +2,7 @@ package com.api.rapi.controllers;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,13 +19,11 @@ public class RestauranteController {
         this.restauranteService = restauranteService;
     }
 
-    // Obtener todos los restaurantes
     @GetMapping
     public List<RestauranteModel> obtenerRestaurantes() {
         return restauranteService.obtenerRestaurantes();
     }
 
-    // Buscar restaurante por ID
     @GetMapping("/{id}")
     public ResponseEntity<RestauranteModel> obtenerRestaurantePorId(
             @PathVariable Long id) {
@@ -34,7 +33,6 @@ public class RestauranteController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Buscar restaurantes por nombre
     @GetMapping("/buscar")
     public List<RestauranteModel> buscarPorNombre(
             @RequestParam String nombre) {
@@ -42,7 +40,6 @@ public class RestauranteController {
         return restauranteService.buscarRestaurantesPorNombre(nombre);
     }
 
-    // Buscar restaurantes por tipo de comida
     @GetMapping("/tipo-comida")
     public List<RestauranteModel> buscarPorTipoComida(
             @RequestParam String tipoComida) {
@@ -50,19 +47,16 @@ public class RestauranteController {
         return restauranteService.buscarRestaurantesPorTipoComida(tipoComida);
     }
 
-    // Obtener restaurantes activos
     @GetMapping("/activos")
     public List<RestauranteModel> obtenerRestaurantesActivos() {
         return restauranteService.obtenerRestaurantesActivos();
     }
 
-    // Obtener restaurantes abiertos y activos
     @GetMapping("/abiertos")
     public List<RestauranteModel> obtenerRestaurantesAbiertos() {
         return restauranteService.obtenerRestaurantesAbiertos();
     }
 
-    // Registrar restaurante
     @PostMapping
     public ResponseEntity<RestauranteModel> registrarRestaurante(
             @RequestBody RestauranteModel restaurante) {
@@ -70,18 +64,13 @@ public class RestauranteController {
         RestauranteModel nuevoRestaurante =
                 restauranteService.registrarRestaurante(restaurante);
 
-        return ResponseEntity.status(201).body(nuevoRestaurante);
+        return ResponseEntity.status(HttpStatus.CREATED).body(nuevoRestaurante);
     }
 
-    // Actualizar restaurante
     @PutMapping("/{id}")
     public ResponseEntity<RestauranteModel> actualizarRestaurante(
             @PathVariable Long id,
             @RequestBody RestauranteModel restaurante) {
-
-        if (restauranteService.buscarRestaurantePorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         RestauranteModel actualizado =
                 restauranteService.actualizarRestaurante(id, restaurante);
@@ -89,15 +78,10 @@ public class RestauranteController {
         return ResponseEntity.ok(actualizado);
     }
 
-    // Cambiar disponibilidad del restaurante
     @PatchMapping("/{id}/disponibilidad")
     public ResponseEntity<RestauranteModel> cambiarDisponibilidad(
             @PathVariable Long id,
             @RequestParam boolean abierto) {
-
-        if (restauranteService.buscarRestaurantePorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         RestauranteModel actualizado =
                 restauranteService.cambiarDisponibilidad(id, abierto);
@@ -105,15 +89,10 @@ public class RestauranteController {
         return ResponseEntity.ok(actualizado);
     }
 
-    // Activar o desactivar restaurante
     @PatchMapping("/{id}/estado")
     public ResponseEntity<RestauranteModel> cambiarEstado(
             @PathVariable Long id,
             @RequestParam boolean activo) {
-
-        if (restauranteService.buscarRestaurantePorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         RestauranteModel actualizado =
                 restauranteService.cambiarEstado(id, activo);
@@ -121,14 +100,9 @@ public class RestauranteController {
         return ResponseEntity.ok(actualizado);
     }
 
-    // Eliminar restaurante
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminarRestaurante(
             @PathVariable Long id) {
-
-        if (restauranteService.buscarRestaurantePorId(id).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
 
         restauranteService.eliminarRestaurante(id);
 
